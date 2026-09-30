@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <fcntl.h>
 
 char *find_executable_path(const char *command, const char *path_env) {
     
@@ -48,6 +49,12 @@ int main (void) {
     char line[1024];
 
     while (1) {
+
+        int status;
+        while (waitpid(-1, &status, WNOHANG) > 0) {
+
+        }
+
         printf("tush> ");
         fflush(stdout);
 
@@ -83,7 +90,7 @@ int main (void) {
 
         char *path_env = getenv("PATH");
 
-        pid_t pid = fork(); 
+        int pid = fork(); 
 
         if (pid < 0) {
             perror("fork");
@@ -93,12 +100,48 @@ int main (void) {
 
         else if (pid == 0) {
 
+            if (cl->left.input_file != NULL) {
+
+                int fd = open(cl->left.input_file, O_RDONLY);
+
+                if (fd < 0) {
+                    perror("open");
+                    exit(1);
+                }
+
+                if (dup2(fd,0) < 0) {
+                    perror("dup2");
+                    close(fd);
+                    exit(1);
+                }
+
+
+                
+            }
+
+            if (cl->left.output_file != NULL) {
+
+                int fd = open(cl->left.output_file, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+
+                if (fd < 0) {
+                    perror("open");
+                    exit(1);
+                }
+
+                if (dup2(fd,1) < 0) {
+                    perror("dup2");
+                    close(fd);
+                    exit(1);
+                }
+
+                close(fd);
+
+            }
+
             char *executable_path;
 
-            if (strchr(cl->left.argv[0], '/') != NULL) {
-
+            if (cl->left.argv[0][0] == '/') {
                 executable_path = cl->left.argv[0];
-
             }
 
             else {
@@ -112,17 +155,23 @@ int main (void) {
 
             execv(executable_path, cl->left.argv);
 
-            perror("tush: execv");
+            perror("execv");
             exit(1);
         }
 
-        else {
+         else {
+
+            if (cl->background) {
+                printf("[background pid %d]\n", pid);
+            }
+
+            else {
 
             int wstatus;
 
             waitpid(pid, &wstatus, 0);
 
-            if (WIFEXITED(wstatus)) {
+            if (WIFEXITED(status)) {
                 int code = WEXITSTATUS(wstatus);
 
                 if (code != 0) {
@@ -130,6 +179,7 @@ int main (void) {
                 }
             }
 
+        }
         }
 
         free_command_line(cl);
